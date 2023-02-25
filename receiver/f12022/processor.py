@@ -163,7 +163,6 @@ class F12022Processor:
 
         # This is some custom work for wind-sim v1.0 - report speed over COM port to Arduino
         if self.packet_count % 3 == 0:
-
             if packet_data.get("speed") < 5:
                 speed = 0
             elif 5 <= packet_data.get("speed") < self.min_fan_speed:
@@ -185,22 +184,21 @@ class F12022Processor:
                     trimmed_data = int(data)
                 except:
                     log.error("Malformed data received")
-                    log.info("Speed: " + str(packet_data.get("speed")))
-                    log.info("AdjSpd: " + str(speed))
+                    log.info("Telemetry Speed: " + str(packet_data.get("speed")) + ' | Adjusted Speed: ' + str(speed))
+
             else:
                 log.warning("No Data Received")
-                log.info("Speed: " + str(packet_data.get("speed")))
-                log.info("AdjSpd: " + str(speed))
+                log.info("Telemetry Speed: " + str(packet_data.get("speed")) + ' | Adjusted Speed: ' + str(speed))
+
+            if self.packet_count % 300 == 0:
+                log.info("Telemetry Speed: " + str(packet_data.get("speed")) + ' | Adjusted Speed: ' + str(speed))
+                if data:
+                    print(data)
 
             self.ser.flushInput()
 
-        if self.packet_count % 30 == 0:
-            log.info("Speed: " + str(packet_data.get("speed")))
-            log.info("AdjSpd: " + str(speed))
-            if data:
-                print(data)
-
         self.packet_count += 1
+        # End custom fan control code
 
     def process_participant_data(self, packet_data):
         """
@@ -366,7 +364,7 @@ class F12022Processor:
         self.session.last_logged_distance = current_lap_distance
         return True
 
-    def close(self):
+    def kill(self):
         if self.ser:
             self.ser.write(('000' + '\r').encode())
             self.ser.close()

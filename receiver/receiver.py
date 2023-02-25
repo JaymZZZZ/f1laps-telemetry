@@ -162,6 +162,13 @@ class RaceReceiver(threading.Thread):
         self.kill_event.set()
         log.info("Telemetry receiver stopped")
 
+        if self.processor:
+            log.info("Receiver closing and sending shutdown signal")
+            try:
+                self.processor.kill()
+            except:
+                log.info("No serial connection to close...")
+
     def run(self):
         """
         This method is called automatically when calling .start() on the receiver class (in race.py).
@@ -214,6 +221,4 @@ class RaceReceiver(threading.Thread):
                 log.info("Unknown main receiver exception: %s" % ex)
                 sentry_sdk.capture_exception(ex)
 
-        if self.processor and isinstance(self.processor, F12022Processor):
-            log.info("Receiver closing and sending shutdown signal")
-            self.processor.close(self.processor)
+
