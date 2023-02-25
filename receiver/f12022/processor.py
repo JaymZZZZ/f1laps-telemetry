@@ -1,4 +1,6 @@
 import logging
+import serial
+
 log = logging.getLogger(__name__)
 
 from receiver.f12022.packets.helpers import unpack_udp_packet
@@ -11,11 +13,24 @@ class F12022Processor:
     session = None
     f1laps_api_key = None
     telemetry_enabled = True
+    ser = None
+    min_fan_speed = 30
+    max_fan_speed = 30
+    packet_count = 0
 
-    def __init__(self, f1laps_api_key, enable_telemetry):
+    def __init__(self, f1laps_api_key, enable_telemetry, min_fan_speed, max_fan_speed, com_port):
         self.f1laps_api_key = f1laps_api_key
         self.telemetry_enabled = enable_telemetry
+        self.ser = serial.Serial(com_port, 9800, timeout=1)
+        self.min_fan_speed = min_fan_speed
+        self.max_fan_speed = max_fan_speed
+        self.com_port = com_port
+
         log.info("Started F1 2022 game processor")
+        log.info("Min Fan Speed: " + str(self.min_fan_speed))
+        log.info("Max Fan Speed: " + str(self.max_fan_speed))
+        log.info("COM port: " + self.com_port)
+
         super(F12022Processor, self).__init__()
 
     def process(self, unpacked_packet):
@@ -39,7 +54,7 @@ class F12022Processor:
                 packet_data = packet.serialize()
                 if packet_data:
                     self.process_serialized_packet(packet_data)
-            
+
     def process_serialized_packet(self, packet_data):
         """ Given a serialized packet, process it """
         if not packet_data.get("packet_type"):
@@ -65,7 +80,7 @@ class F12022Processor:
         elif packet_data["packet_type"] == "motion":
             self.process_motion_packet(packet_data)
         return True
-    
+
     def process_session_packet(self, packet_data):
         """ 
         Start new session if UDP ID changes
@@ -74,7 +89,7 @@ class F12022Processor:
         if packet_data["session_uid"] != self.session.session_udp_uid:
             # Update session if UDP changed
             log.info("Session UDP has changed from %s to %s. Creating new session." \
-                % (self.session.session_udp_uid, packet_data["session_uid"]))
+                     % (self.session.session_udp_uid, packet_data["session_uid"]))
             self.session = self.create_session(packet_data)
         else:
             # Update session weather 
@@ -89,10 +104,10 @@ class F12022Processor:
             # So let's just make sure
             if not self.session.session_type and packet_data["session_type"] is not None:
                 self.session.session_type = packet_data["session_type"]
-        
+
     def create_session(self, packet_data):
-        return F12022Session(self.f1laps_api_key, 
-                             self.telemetry_enabled, 
+        return F12022Session(self.f1laps_api_key,
+                             self.telemetry_enabled,
                              packet_data["session_uid"],
                              packet_data["session_type"],
                              packet_data["track_id"],
@@ -101,19 +116,19 @@ class F12022Processor:
                              packet_data["weather_id"],
                              packet_data["game_mode"],
                              packet_data["season_link_identifier"]
-                            )
-    
+                             )
+
     def process_lap_packet(self, packet_data):
         lap_number = packet_data.get("lap_number")
         if not lap_number:
             # If we can't retrieve lap number, we can't do anything
-            return 
-        # Get lap object 
+            return
+            # Get lap object
         last_lap_time = packet_data.get("last_laptime_ms")
         lap = self.session.get_lap(lap_number, last_lap_time)
         # Update lap
         lap.update(
-            lap_values = {
+            lap_values={
                 "sector_1_ms": packet_data.get("sector_1_ms"),
                 "sector_2_ms": packet_data.get("sector_2_ms"),
                 "sector_3_ms": packet_data.get("sector_3_ms"),
@@ -121,21 +136,21 @@ class F12022Processor:
                 "is_valid": packet_data.get("is_valid"),
                 "car_race_position": packet_data.get("car_race_position")
             },
-            telemetry_values = {
+            telemetry_values={
                 "lap_distance": packet_data.get("lap_distance"),
                 "frame_identifier": packet_data.get("frame_identifier"),
                 "lap_time": packet_data.get("current_laptime_ms"),
             }
         )
-    
+
     def process_telemetry_packet(self, packet_data):
         # Get lap object 
         lap = self.session.get_current_lap()
         if not lap:
             return
         lap.update(
-            lap_values = {},
-            telemetry_values = {
+            lap_values={},
+            telemetry_values={
                 "frame_identifier": packet_data.get("frame_identifier"),
                 "speed": packet_data.get("speed"),
                 "brake": packet_data.get("brake"),
@@ -145,7 +160,48 @@ class F12022Processor:
                 "drs": packet_data.get("drs"),
             }
         )
-    
+
+        # This is some custom work for wind-sim v1.0 - report speed over COM port to Arduino
+        if self.packet_count % 3 == 0:
+
+            if packet_data.get("speed") < 5:
+                speed = 0
+            elif 5 <= packet_data.get("speed") < self.min_fan_speed:
+                speed = self.min_fan_speed
+            else:
+                delta = (255 - self.min_fan_speed) / self.max_fan_speed
+                speed = round((self.min_fan_speed + (packet_data.get("speed")) * delta))
+
+            if speed < 10:
+                self.ser.write(('00' + str(speed) + '\r').encode())
+            elif speed < 100:
+                self.ser.write(('0' + str(speed) + '\r').encode())
+            else:
+                self.ser.write((str(speed) + '\r').encode())
+
+            data = self.ser.readline()[:-2]
+            if data:
+                try:
+                    trimmed_data = int(data)
+                except:
+                    log.error("Malformed data received")
+                    log.info("Speed: " + str(packet_data.get("speed")))
+                    log.info("AdjSpd: " + str(speed))
+            else:
+                log.warning("No Data Received")
+                log.info("Speed: " + str(packet_data.get("speed")))
+                log.info("AdjSpd: " + str(speed))
+
+            self.ser.flushInput()
+
+        if self.packet_count % 30 == 0:
+            log.info("Speed: " + str(packet_data.get("speed")))
+            log.info("AdjSpd: " + str(speed))
+            if data:
+                print(data)
+
+        self.packet_count += 1
+
     def process_participant_data(self, packet_data):
         """
         Add team ID to session if it isn't set yet
@@ -157,10 +213,10 @@ class F12022Processor:
             self.session.set_team_id(packet_data["team_id"])
         # Add all participants to session (if not already added)
         if packet_data.get("participants") and \
-            len(self.session.participants) < packet_data.get("num_participants"):
+                len(self.session.participants) < packet_data.get("num_participants"):
             for participant in packet_data.get("participants"):
                 self.session.add_participant(participant)
-    
+
     def process_setup_packet(self, packet_data):
         """
         Add setup to session
@@ -188,12 +244,12 @@ class F12022Processor:
             "rear_right_tyre_pressure": packet_data.get("rear_right_tyre_pressure"),
             "rear_left_tyre_pressure": packet_data.get("rear_left_tyre_pressure"),
         }
-    
+
     def process_final_classification_packet(self, packet_data):
         # Set session final classification data
         self.session.finish_position = packet_data.get("finish_position")
-        self.session.result_status   = packet_data.get("result_status")
-        self.session.points          = packet_data.get("points")
+        self.session.result_status = packet_data.get("result_status")
+        self.session.points = packet_data.get("points")
         # Set each participant's final classification data
         for index, classification in packet_data.get("all_participants_results").items():
             try:
@@ -217,7 +273,7 @@ class F12022Processor:
             self.session.recompute_sector_3_lap_time(osq_lap_number, best_lap_time)
         # Sync to F1L
         self.session.sync_to_f1laps(lap_number=None, sync_entire_session=True)
-    
+
     def process_event_packet(self, packet_data):
         """ Process various types of ad-hoc game events """
         if not packet_data.get("event_type"):
@@ -226,14 +282,15 @@ class F12022Processor:
             self.process_flashback_event_packet(packet_data)
         elif packet_data.get("event_type") == "penalty":
             self.process_penalty_event_packet(packet_data)
-    
+
     def process_flashback_event_packet(self, packet_data):
         """ Call current lap's process_flashback_event_packet method """
         frame_id = packet_data.get("frame_identifier")
         session_time = packet_data.get("session_time")
-        log.info("Event: Flashback happened to frame %s and session time %s. Deleting frames." % (frame_id, session_time))
+        log.info(
+            "Event: Flashback happened to frame %s and session time %s. Deleting frames." % (frame_id, session_time))
         self.session.get_current_lap().process_flashback_event(frame_id)
-    
+
     def process_penalty_event_packet(self, packet_data):
         """ Create Penalty object and send it to F1Laps """
         penalty = F12022Penalty()
@@ -248,13 +305,13 @@ class F12022Processor:
         penalty.session = self.session
         log.info("Processing %s" % penalty)
         penalty.add_to_lap()
-    
+
     def process_car_status_packet(self, packet_data):
         """ Update tyres used for the current lap """
         current_lap = self.session.get_current_lap()
         if current_lap:
             current_lap.tyre_compound_visual = packet_data.get("tyre_compound_visual")
-        
+
     def process_car_damage_packet(self, packet_data):
         current_lap = self.session.get_current_lap()
         if current_lap:
@@ -264,15 +321,15 @@ class F12022Processor:
                 packet_data["tyre_wear_rear_left"],
                 packet_data["tyre_wear_rear_right"],
             )
-    
+
     def process_motion_packet(self, packet_data):
         """ Logs motion data for the creation of the minimap svg """
         # Settings
         MOTION_LOG_ENABLED = False
         if not MOTION_LOG_ENABLED:
             return False
-        MINIMAP_ROUNDING = 0 # decimal points of the logged coordinates
-        MINIMAP_SPACING = 1 # min distance between 2 logged coordinates in m
+        MINIMAP_ROUNDING = 0  # decimal points of the logged coordinates
+        MINIMAP_SPACING = 1  # min distance between 2 logged coordinates in m
 
         # using x and z; y is height which we don't need for the 2D svg
         xpos = packet_data.get("xpos")
@@ -296,12 +353,17 @@ class F12022Processor:
             spacing = current_lap_distance - last_logged_distance
             if spacing >= 0 and spacing < MINIMAP_SPACING:
                 return False
-        
+
         # Log and update last_logged_distance
         log.info("WPMAP: %s,%s,%s" % (
-            round(current_lap_distance, MINIMAP_ROUNDING), 
-            round(xpos, MINIMAP_ROUNDING), 
+            round(current_lap_distance, MINIMAP_ROUNDING),
+            round(xpos, MINIMAP_ROUNDING),
             round(zpos, MINIMAP_ROUNDING)
         ))
         self.session.last_logged_distance = current_lap_distance
         return True
+
+    def close(self):
+        if self.ser:
+            self.ser.write(('000' + '\r').encode())
+            self.ser.close()

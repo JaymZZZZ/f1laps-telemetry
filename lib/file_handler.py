@@ -41,7 +41,8 @@ def get_path_temporary(file_name):
 class ConfigFile:
     """ Read / write config file """
     supported_config_names = ["API_KEY", "UDP_BROADCAST_ENABLED", "IP_VALUE", "PORT_VALUE", "UDP_REDIRECT_ENABLED",
-                              "REDIRECT_HOST_VALUE", "REDIRECT_PORT_VALUE"]
+                              "REDIRECT_HOST_VALUE", "REDIRECT_PORT_VALUE", "FAN_MIN_SPEED", "FAN_MAX_SPEED",
+                              "FAN_COM_PORT"]
     config_file_name = "f1laps_configuration.txt"
 
     def __init__(self):

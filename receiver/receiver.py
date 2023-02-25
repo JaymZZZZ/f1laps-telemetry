@@ -17,12 +17,16 @@ DEFAULT_PORT = 20777
 SENTRY_DSN = "https://d00edba104864bee975f5f4a71025639@o615967.ingest.sentry.io/5854730"
 REDIRECT_HOST = "127.0.0.1"
 REDIRECT_PORT = 20975
+MIN_FAN_SPEED = 30
+MAX_FAN_SPEED = 300
+COM_PORT = "COM3"
 
 
 class RaceReceiver(threading.Thread):
 
     def __init__(self, f1laps_api_key, enable_telemetry=True, host_ip=None, host_port=None, run_as_daemon=True,
-                 use_udp_broadcast=False, redirect_host=None, redirect_port=None, use_udp_redirect=False):
+                 use_udp_broadcast=False, redirect_host=None, redirect_port=None, use_udp_redirect=False,
+                 min_fan_speed=30, max_fan_speed=300, com_port="COM3"):
         """
         Init the receiver with all attributes needed to
         push data to F1Laps
@@ -47,6 +51,11 @@ class RaceReceiver(threading.Thread):
         self.use_udp_redirect = use_udp_redirect
         self.redirect_host = redirect_host or str(REDIRECT_HOST)
         self.redirect_port = redirect_port or int(REDIRECT_PORT)
+
+        # Fan Speed Settings
+        self.min_fan_speed = min_fan_speed or int(MIN_FAN_SPEED)
+        self.max_fan_speed = max_fan_speed or int(MAX_FAN_SPEED)
+        self.com_port = com_port or str(COM_PORT)
 
         log.info("*************************************************")
         if self.use_udp_broadcast:
@@ -189,8 +198,9 @@ class RaceReceiver(threading.Thread):
                         self.start_sentry()
                 elif game_version == "f12022":
                     if not self.processor or not isinstance(self.processor, F12022Processor):
-                        log.info("Detected F1 2022 game version, starting F1 2022 processor.")
-                        self.processor = F12022Processor(self.f1laps_api_key, self.telemetry_enabled)
+                        log.info("Detected F1 2022 game version, starting F1 2022 processor with fan support.")
+                        self.processor = F12022Processor(self.f1laps_api_key, self.telemetry_enabled,
+                                                         self.min_fan_speed, self.max_fan_speed, self.com_port)
                         # Start Sentry (only for F1 22)
                         self.start_sentry()
                 else:
@@ -203,3 +213,7 @@ class RaceReceiver(threading.Thread):
             except Exception as ex:
                 log.info("Unknown main receiver exception: %s" % ex)
                 sentry_sdk.capture_exception(ex)
+
+        if self.processor and isinstance(self.processor, F12022Processor):
+            log.info("Receiver closing and sending shutdown signal")
+            self.processor.close(self.processor)

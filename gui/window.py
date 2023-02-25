@@ -18,6 +18,9 @@ F1LAPS_VERSION_ENDPOINT = "https://www.f1laps.com/api/f12020/telemetry/app/versi
 DEFAULT_PORT = 20777
 DEFAULT_REDIRECT_HOST = "127.0.0.1"
 DEFAULT_REDIRECT_PORT = 20957
+DEFAULT_MAX_SPEED = 300
+DEFAULT_MIN_SPEED = 40
+DEFAULT_COM_PORT = "COM3"
 
 
 class StartButton(QPushButton):
@@ -73,10 +76,11 @@ class TelemetrySession:
         self.is_active = False
 
     def start(self, api_key, enable_telemetry, use_udp_broadcast, ip_value, port_value, redirect_host, redirect_port,
-              use_udp_redirect):
+              use_udp_redirect, min_fan_speed, max_fan_speed, com_port):
         receiver_thread = RaceReceiver(api_key, enable_telemetry=enable_telemetry, use_udp_broadcast=use_udp_broadcast,
                                        host_ip=ip_value, host_port=port_value, redirect_host=redirect_host,
-                                       redirect_port=redirect_port, use_udp_redirect=use_udp_redirect)
+                                       redirect_port=redirect_port, use_udp_redirect=use_udp_redirect,
+                                       min_fan_speed=min_fan_speed, max_fan_speed=max_fan_speed, com_port=com_port)
         receiver_thread.start()
         self.session = receiver_thread
         self.is_active = True
@@ -108,6 +112,11 @@ class MainWindow(QWidget):
         self.redirect_host_value = self.user_config.get("REDIRECT_HOST_VALUE") or str(DEFAULT_REDIRECT_HOST)
         self.redirect_port_value = self.user_config.get("REDIRECT_PORT_VALUE") or str(DEFAULT_REDIRECT_PORT)
 
+        # Fan Control config info
+        self.fan_control_com_port_value = self.user_config.get("FAN_COM_PORT") or str(DEFAULT_COM_PORT)
+        self.fan_control_min_speed_value = self.user_config.get("FAN_MIN_SPEED") or str(DEFAULT_MIN_SPEED)
+        self.fan_control_max_speed_value = self.user_config.get("FAN_MAX_SPEED") or str(DEFAULT_MAX_SPEED)
+
         # Draw the window UI
         self.init_ui()
         # Check if there's a new version
@@ -119,8 +128,6 @@ class MainWindow(QWidget):
         # Auto-start app if api key is set
         if self.api_key:
             self.start_button_click()
-
-
 
     def init_ui(self):
         # 1) Logo & heading
@@ -199,6 +206,39 @@ class MainWindow(QWidget):
         self.redirect_port_field.setObjectName("redirectPortValueField")
         self.redirect_port_field.setText(self.redirect_port_value)
 
+        # Fan Control section
+        fan_control_label = F1QLabel(
+            text="4) Wind Sim Control Section",
+            object_name="fanControlValueLabel"
+        )
+
+        self.fan_control_com_port_field = QLineEdit()
+        self.fan_control_com_port_field.setObjectName("fanControlComPortValueField")
+        self.fan_control_com_port_field.setText(self.fan_control_com_port_value)
+
+        self.fan_control_com_porthelp_text_label = F1QLabel(
+            text="Set COM PORT (Default is %s): " % DEFAULT_COM_PORT,
+            object_name="comPortHelpTextLabel"
+        )
+
+        self.fan_control_min_speed_field = QLineEdit()
+        self.fan_control_min_speed_field.setObjectName("fanControlMinSpeedValueField")
+        self.fan_control_min_speed_field.setText(self.fan_control_min_speed_value)
+
+        self.fan_control_min_speed_help_text_label = F1QLabel(
+            text="Set Minimum Activation Speed (Default is %s): " % DEFAULT_MIN_SPEED,
+            object_name="MinSpeedHelpTextLabel"
+        )
+
+        self.fan_control_max_speed_field = QLineEdit()
+        self.fan_control_max_speed_field.setObjectName("fanControlMaxSpeedValueField")
+        self.fan_control_max_speed_field.setText(self.fan_control_max_speed_value)
+
+        self.fan_control_max_speed_help_text_label = F1QLabel(
+            text="Set Maximum Activation Speed (Default is %s): " % DEFAULT_MAX_SPEED,
+            object_name="MaxSpeedHelpTextLabel"
+        )
+
         # Start/Stop button section
         self.start_button = StartButton()
         self.start_button.clicked.connect(lambda: self.start_button_click())
@@ -255,6 +295,20 @@ class MainWindow(QWidget):
         self.layout.addWidget(QVSpacer(0.5))
         self.layout.addWidget(self.redirect_port_value_help_text_label)
         self.layout.addWidget(self.redirect_port_field)
+
+        # Fan Control Settings
+        self.layout.addWidget(QVSpacer(0.5))
+        self.layout.addWidget(QHSeperationLine())
+        self.layout.addWidget(QVSpacer(0.5))
+        self.layout.addWidget(fan_control_label)
+        self.layout.addWidget(self.fan_control_com_porthelp_text_label)
+        self.layout.addWidget(self.fan_control_com_port_field)
+        self.layout.addWidget(QVSpacer(0.5))
+        self.layout.addWidget(self.fan_control_min_speed_help_text_label)
+        self.layout.addWidget(self.fan_control_min_speed_field)
+        self.layout.addWidget(QVSpacer(0.5))
+        self.layout.addWidget(self.fan_control_max_speed_help_text_label)
+        self.layout.addWidget(self.fan_control_max_speed_field)
 
         # Start button
         self.layout.addWidget(QVSpacer(1))
@@ -316,6 +370,12 @@ class MainWindow(QWidget):
             self.redirect_port_field.setDisabled(True)
             self.redirect_port_field.setReadOnly(True)
             self.udp_redirect_checkbox.setDisabled(True)
+            self.fan_control_com_port_field.setDisabled(True)
+            self.fan_control_com_port_field.setReadOnly(True)
+            self.fan_control_max_speed_field.setDisabled(True)
+            self.fan_control_max_speed_field.setReadOnly(True)
+            self.fan_control_min_speed_field.setDisabled(True)
+            self.fan_control_min_speed_field.setReadOnly(True)
         else:
             log.info("Stopping session...")
             self.stop_telemetry()
@@ -332,6 +392,10 @@ class MainWindow(QWidget):
             self.redirect_port_field.setDisabled(False)
             self.redirect_port_field.setReadOnly(False)
             self.udp_redirect_checkbox.setDisabled(False)
+            self.fan_control_max_speed_field.setDisabled(False)
+            self.fan_control_max_speed_field.setReadOnly(False)
+            self.fan_control_min_speed_field.setDisabled(False)
+            self.fan_control_min_speed_field.setReadOnly(False)
             self.status_label.setText("Status: stopped")
 
     def start_telemetry(self):
@@ -387,8 +451,10 @@ class MainWindow(QWidget):
                                port_value=self.get_port_value(),
                                redirect_host=self.get_redirect_host_value(),
                                redirect_port=self.get_redirect_port_value(),
-                               use_udp_redirect=self.udp_redirect_enabled
-
+                               use_udp_redirect=self.udp_redirect_enabled,
+                               min_fan_speed=self.get_min_fan_speed_value(),
+                               max_fan_speed=self.get_max_fan_speed_value(),
+                               com_port=self.get_fan_com_port_value(),
                                )
         else:
             log.info("Not starting Telemetry session (api key %s, subscription %s)" % \
@@ -438,6 +504,43 @@ class MainWindow(QWidget):
             # Update in UI if we reverted it
             self.redirect_port_field.setText(str(self.redirect_port_value))
         return int(self.redirect_port_value)
+
+    def get_max_fan_speed_value(self):
+        self.max_fan_speed_value = self.fan_control_max_speed_field.text()
+        try:
+            self.max_fan_speed_value = str(int(self.max_fan_speed_value))
+            # Save user value in config
+            self.user_config.set("FAN_MAX_SPEED", self.max_fan_speed_value)
+        except:
+            self.max_fan_speed_value = DEFAULT_MAX_SPEED
+            # Update in UI if we reverted it
+            self.fan_control_max_speed_field.setText(str(self.max_fan_speed_value))
+        return int(self.max_fan_speed_value)
+    
+    def get_min_fan_speed_value(self):
+        self.min_fan_speed_value = self.fan_control_min_speed_field.text()
+        try:
+            self.min_fan_speed_value = str(int(self.min_fan_speed_value))
+            # Save user value in config
+            self.user_config.set("FAN_MIN_SPEED", self.min_fan_speed_value)
+        except:
+            self.min_fan_speed_value = DEFAULT_MIN_SPEED
+            # Update in UI if we reverted it
+            self.fan_control_min_speed_field.setText(str(self.min_fan_speed_value))
+        return int(self.min_fan_speed_value)
+
+    def get_fan_com_port_value(self):
+        self.fan_control_com_port_value = self.fan_control_com_port_field.text()
+        try:
+            self.fan_control_com_port_value = str(self.fan_control_com_port_value)
+            # Save user value in config
+            self.user_config.set("FAN_COM_PORT", self.fan_control_com_port_value)
+        except:
+            self.fan_control_com_port_value = DEFAULT_COM_PORT
+            # Update in UI if we reverted it
+            self.fan_control_com_port_field.setText(str(self.fan_control_com_port_value))
+        return str(self.fan_control_com_port_value)
+
 
     def get_redirect_host_value(self):
         self.redirect_host_value = self.redirect_host_field.text()

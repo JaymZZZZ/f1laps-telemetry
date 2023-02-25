@@ -1,12 +1,14 @@
 GUI_STYLES = """
 
-QLabel#apiKeyFieldLabel, QLabel#hostValueField, QLabel#ipValueLabel, QLabel#statusHeadingLabel, QLabel#udpRedirectValueLabel {
+QLabel#apiKeyFieldLabel, QLabel#hostValueField, QLabel#ipValueLabel, QLabel#statusHeadingLabel, 
+QLabel#udpRedirectValueLabel, QLabel#fanControlValueLabel {
     font-size: 14px;
     font-weight: bold;
     color: #111827;
 }
 
-QLabel#ipValueField, QLabel#ipValueField, QLabel#redirectIPValueField, QLabel#redirectPortValueField {
+QLabel#ipValueField, QLabel#ipValueField, QLabel#redirectIPValueField, QLabel#redirectPortValueField,
+ QLabel#fanControlMinSpeedValueField, QLabel#fanControlMaxSpeedValueField, QLabel#fanControlComPortValueField {
     font-size: 14px;
     color: #111827;
 }
@@ -17,7 +19,8 @@ QLabel#statusHeadingLabel {
 
 QLabel#apiKeyHelpTextLabel, QLabel#ipValueHelpTextLabel, QLabel#helpTextLabel, QLabel#appVersionLabel, 
 QLabel#statusLabel, QLabel#subscriptionLabel, QLabel#udpBroadcastHelpTextLabel, QLabel#udpRedirectHelpTextLabel,
-QLabel#redirectIPHelpTextLabel, QLabel#redirectPortHelpTextLabel{
+QLabel#redirectIPHelpTextLabel, QLabel#redirectPortHelpTextLabel,
+QLabel#comPortHelpTextLabel, QLabel#MinSpeedHelpTextLabel, QLabel#MaxSpeedHelpTextLabel{
     font-size: 11px;
     color: #6B7280;
 }
