@@ -392,6 +392,8 @@ class MainWindow(QWidget):
             self.redirect_port_field.setDisabled(False)
             self.redirect_port_field.setReadOnly(False)
             self.udp_redirect_checkbox.setDisabled(False)
+            self.fan_control_com_port_field.setDisabled(False)
+            self.fan_control_com_port_field.setReadOnly(False)
             self.fan_control_max_speed_field.setDisabled(False)
             self.fan_control_max_speed_field.setReadOnly(False)
             self.fan_control_min_speed_field.setDisabled(False)
